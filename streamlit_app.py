@@ -1,9 +1,20 @@
 import os
 from typing import Any, Optional
+import json
+import logging
 
 import streamlit as st
 
 from n8n_client import N8nClient
+from agent import build_agent
+from logging_config import setup_logging
+from json_templates import (
+    http_request_node,
+    set_node,
+    if_node,
+    function_node,
+    simple_flow_http_set_if,
+)
 
 
 APP_TITLE = "n8n Copilot (MVP)"
@@ -122,10 +133,19 @@ def render_chat() -> None:
     if prompt:
         st.session_state["messages"].append({"role": "user", "content": prompt})
         with st.chat_message("assistant"):
-            st.markdown("This is a placeholder response. Agent wiring will be added.")
-        st.session_state["messages"].append(
-            {"role": "assistant", "content": "This is a placeholder response. Agent wiring will be added."}
-        )
+            try:
+                client: Optional[N8nClient] = st.session_state.get("n8n_client")
+                if not client:
+                    st.warning("Connect to n8n first in the sidebar.")
+                    reply = "Please connect to your n8n instance first."
+                else:
+                    agent = build_agent(client)
+                    result = agent.invoke({"input": prompt})
+                    reply = result.get("output", "(No response)")
+                st.markdown(reply)
+                st.session_state["messages"].append({"role": "assistant", "content": reply})
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"Agent error: {exc}")
 
 
 def generate_node_json(node_type: str, name: str) -> dict:
@@ -133,54 +153,13 @@ def generate_node_json(node_type: str, name: str) -> dict:
     name = name.strip() or "New Node"
 
     if node_type_lower in {"http", "http request", "http_request", "httprequest"}:
-        return {
-            "parameters": {
-                "authentication": "none",
-                "requestMethod": "GET",
-                "url": "https://api.example.com/",
-            },
-            "type": "n8n-nodes-base.httpRequest",
-            "typeVersion": 4,
-            "name": name,
-            "position": [0, 0],
-        }
+        return http_request_node(name=name)
     if node_type_lower in {"set", "set node"}:
-        return {
-            "parameters": {
-                "keepOnlySet": False,
-                "values": {
-                    "string": [
-                        {"name": "key", "value": "value"},
-                    ]
-                },
-            },
-            "type": "n8n-nodes-base.set",
-            "typeVersion": 2,
-            "name": name,
-            "position": [0, 0],
-        }
+        return set_node(name=name)
     if node_type_lower in {"if", "condition", "conditional"}:
-        return {
-            "parameters": {
-                "conditions": {
-                    "string": [
-                        {"value1": "={{$json.key}}", "operation": "equals", "value2": "value"},
-                    ]
-                }
-            },
-            "type": "n8n-nodes-base.if",
-            "typeVersion": 2,
-            "name": name,
-            "position": [0, 0],
-        }
+        return if_node(name=name)
     # Generic template
-    return {
-        "parameters": {},
-        "type": node_type or "n8n-nodes-base.function",
-        "typeVersion": 1,
-        "name": name,
-        "position": [0, 0],
-    }
+    return function_node(name=name)
 
 
 def render_suggestions_panel() -> None:
@@ -190,25 +169,32 @@ def render_suggestions_panel() -> None:
     node_type = st.text_input("Node type (e.g., HTTP Request, Set, IF)")
     node_name = st.text_input("Node name", value="Suggested Node")
 
-    if st.button("Generate JSON"):
-        snippet = generate_node_json(node_type=node_type, name=node_name)
-        st.json(snippet)
-        st.code(
-            """// Copy this JSON into the n8n workflow JSON editor
-"""
-            + ("" if not snippet else ""),
-            language="json",
-        )
-        st.download_button(
-            label="Download JSON",
-            data=(__import__("json").dumps(snippet, indent=2)).encode("utf-8"),
-            file_name=f"{(node_name or 'node').replace(' ', '_').lower()}.json",
-            mime="application/json",
-        )
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if st.button("Generate Node JSON"):
+            snippet = generate_node_json(node_type=node_type, name=node_name)
+            st.json(snippet)
+            st.download_button(
+                label="Download JSON",
+                data=(json.dumps(snippet, indent=2)).encode("utf-8"),
+                file_name=f"{(node_name or 'node').replace(' ', '_').lower()}.json",
+                mime="application/json",
+            )
+    with col_b:
+        if st.button("Generate Mini Flow (HTTP→Set→IF)"):
+            flow = simple_flow_http_set_if()
+            st.json(flow)
+            st.download_button(
+                label="Download Flow JSON",
+                data=(json.dumps(flow, indent=2)).encode("utf-8"),
+                file_name="mini_flow_http_set_if.json",
+                mime="application/json",
+            )
 
 
 def main() -> None:
     st.set_page_config(page_title=APP_TITLE, layout="wide")
+    setup_logging()
     init_session_state()
     sidebar_config()
 

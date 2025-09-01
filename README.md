@@ -26,7 +26,8 @@ Then click “Validate & Connect”.
 ## LLM via OpenRouter
 - Default provider: OpenRouter (OpenAI-compatible API)
 - Set `OPENROUTER_API_KEY` and (optionally) `OPENROUTER_BASE_URL=https://openrouter.ai/api/v1`
-- Not required to run the MVP UI placeholder; needed when agent is wired
+- To enable built-in web search, use ":online" models (e.g., `openrouter/auto:online`)
+- Docs: https://openrouter.ai/docs/features/web-search
 
 ## Local Storage
 - MVP uses local SQLite where needed (later we’ll migrate to Postgres + pgvector)

@@ -4,6 +4,8 @@ requests>=2.31
 
 # LLM (OpenRouter is OpenAI-compatible)
 openai>=1.30
+langchain>=0.2
+langchain-openai>=0.1
 
 # (Future) RAG local vector store
 chromadb>=0.5  # planned; not required for initial run

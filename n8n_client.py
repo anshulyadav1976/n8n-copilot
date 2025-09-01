@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+import logging
+import time
 import requests
 
 
@@ -51,19 +53,19 @@ class N8nClient:
         Returns True on HTTP 200; raises on errors.
         """
         url = self._url("/rest/workflows")
-        response = requests.get(url, headers=self._headers(), timeout=self.timeout_seconds)
+        response = self._get_with_retry(url)
         response.raise_for_status()
         return True
 
     def list_workflows(self) -> Any:
         url = self._url("/rest/workflows")
-        response = requests.get(url, headers=self._headers(), timeout=self.timeout_seconds)
+        response = self._get_with_retry(url)
         response.raise_for_status()
         return response.json()
 
     def get_workflow(self, workflow_id: str | int) -> Any:
         url = self._url(f"/rest/workflows/{workflow_id}")
-        response = requests.get(url, headers=self._headers(), timeout=self.timeout_seconds)
+        response = self._get_with_retry(url)
         response.raise_for_status()
         return response.json()
 
@@ -86,17 +88,52 @@ class N8nClient:
         if offset is not None:
             params["offset"] = offset
 
-        response = requests.get(
-            url, headers=self._headers(), params=params, timeout=self.timeout_seconds
-        )
+        response = self._get_with_retry(url, params=params)
         response.raise_for_status()
         return response.json()
 
     def get_execution(self, execution_id: str | int) -> Any:
         url = self._url(f"/rest/executions/{execution_id}")
-        response = requests.get(url, headers=self._headers(), timeout=self.timeout_seconds)
+        response = self._get_with_retry(url)
         response.raise_for_status()
         return response.json()
+
+    # --- Internal helpers with simple retry/backoff and logging ---
+    def _get_with_retry(self, url: str, params: Optional[Dict[str, Any]] = None) -> requests.Response:
+        logger = logging.getLogger("n8n_client")
+        attempts = 0
+        delay_seconds = 0.5
+        while True:
+            attempts += 1
+            try:
+                response = requests.get(
+                    url, headers=self._headers(), params=params, timeout=self.timeout_seconds
+                )
+                if response.status_code in (429, 502, 503, 504):
+                    # handle rate limit or transient upstream issues
+                    if attempts < 4:
+                        logger.warning(
+                            "Transient %s from n8n. Retrying in %.1fs (attempt %d)",
+                            response.status_code,
+                            delay_seconds,
+                            attempts,
+                        )
+                        time.sleep(delay_seconds)
+                        delay_seconds *= 2
+                        continue
+                return response
+            except requests.RequestException as exc:  # covers timeouts, connection errors
+                if attempts < 4:
+                    logger.warning(
+                        "Request error '%s'. Retrying in %.1fs (attempt %d)",
+                        exc,
+                        delay_seconds,
+                        attempts,
+                    )
+                    time.sleep(delay_seconds)
+                    delay_seconds *= 2
+                    continue
+                raise
 
 
 __all__ = ["N8nClient"]

@@ -63,6 +63,8 @@
   - Alt: LlamaIndex Agents, CrewAI; choose LangChain for ecosystem maturity
 - LLM: OpenRouter gateway (default; configurable to OpenAI/Azure/Anthropic)
   - Docs: [OpenRouter API](https://openrouter.ai/docs)
+  - Built-in web search via `:online` suffix (no Tavily needed)
+    - Docs: [OpenRouter Web Search](https://openrouter.ai/docs/features/web-search)
 - HTTP: `httpx` (async) or `requests` (sync) for n8n API
 - Vector store (MVP): Chroma (local, SQLite-backed)
   - Docs: [Chroma Usage Guide](https://docs.trychroma.com/usage-guide)
@@ -90,18 +92,18 @@
 - Azure self-hosting reference: [Azure Setup](https://docs.n8n.io/hosting/installation/server-setups/azure/)
 
 ## Implementation TODO (MVP)
-- [ ] Streamlit scaffold: `streamlit_app.py`, basic chat UI, sidebar
-- [ ] Config forms: base URL + API key; ephemeral session storage
-- [ ] Configure OpenRouter LLM provider (env, base URL `https://openrouter.ai/api/v1`)
-- [ ] n8n client (read-only): workflows, workflow by id, executions, execution by id
-- [ ] UI: workflows list + detail JSON/graph, executions list + detail view
-- [ ] Agent: LangChain tools for n8n client, RAG retriever, web search
-- [ ] RAG: ingest official n8n docs into local Chroma; cite sources
-- [ ] Suggestions: generate copyable JSON for node/flow edits
-- [ ] Observability: logging, error toasts, retry/backoff, rate-limit handling
+- [x] Streamlit scaffold: `streamlit_app.py`, basic chat UI, sidebar
+- [x] Config forms: base URL + API key; ephemeral session storage
+- [x] Configure OpenRouter LLM provider (env, base URL `https://openrouter.ai/api/v1`)
+- [x] n8n client (read-only): workflows, workflow by id, executions, execution by id
+- [x] UI: workflows list + detail JSON, executions list + detail view
+- [x] Agent: LangChain tools for n8n client and OpenRouter web search (RAG deferred)
+- [ ] RAG: ingest official n8n docs into local Chroma; cite sources (deferred)
+- [x] Suggestions: generate copyable JSON for node/flow edits
+- [x] Observability: logging, error toasts, retry/backoff, rate-limit handling
 - [ ] Security: key redaction, HTTPS guidance, no key in logs
-- [ ] README and env example; requirements/poetry config
+- [x] README and env example; requirements/poetry config
 - [ ] Plan migration: Postgres + pgvector (production)
- - [ ] Use local SQLite file for MVP (e.g., `./data/app.db`)
+ - [x] Use local SQLite file for MVP (e.g., `./data/app.db`)
 
 
