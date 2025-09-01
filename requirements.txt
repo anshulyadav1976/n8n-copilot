@@ -1,0 +1,12 @@
+# Core UI & HTTP
+streamlit>=1.32
+requests>=2.31
+
+# LLM (OpenRouter is OpenAI-compatible)
+openai>=1.30
+
+# (Future) RAG local vector store
+chromadb>=0.5  # planned; not required for initial run
+
+# (Optional) dotenv for local env files
+python-dotenv>=1.0
