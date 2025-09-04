@@ -1,7 +1,7 @@
 """
 Simple n8n REST API client (read-only for MVP).
 
-Endpoints used (per https://docs.n8n.io/api/):
+Endpoints used (per https://do  cs.n8n.io/api/):
 - GET /rest/workflows
 - GET /rest/workflows/{id}
 - GET /rest/executions
