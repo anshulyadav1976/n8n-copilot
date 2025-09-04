@@ -23,10 +23,17 @@ streamlit run streamlit_app.py
 
 Then click “Validate & Connect”.
 
+Notes:
+- Provide the instance root as Base URL (e.g., `https://your-n8n.example.com`), not `/rest` or `/api/v1`.
+- The app auto-detects Public API (`/api/v1`) vs legacy REST (`/rest`).
+- Ensure Public API is enabled and an API Key is created under Settings → API. 401 Unauthorized typically means the key is invalid/missing or the wrong endpoint is used.
+
 ## LLM via OpenRouter
 - Default provider: OpenRouter (OpenAI-compatible API)
-- Set `OPENROUTER_API_KEY` and (optionally) `OPENROUTER_BASE_URL=https://openrouter.ai/api/v1`
-- To enable built-in web search, use ":online" models (e.g., `openrouter/auto:online`)
+- Set `OPENROUTER_API_KEY` (preferred) or `OPENAI_API_KEY`. The app maps either to the OpenAI-compatible client.
+- Optionally set `OPENROUTER_BASE_URL=https://openrouter.ai/api/v1` (default).
+- Configure model with `OPENROUTER_MODEL` or via the sidebar. Default: `openai/gpt-5-nano`.
+- To enable built-in web search, use models with web search capability (e.g., `openrouter/auto:online`).
 - Docs: https://openrouter.ai/docs/features/web-search
 
 ## Local Storage

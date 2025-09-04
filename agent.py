@@ -4,32 +4,52 @@ import os
 from typing import Any, Callable, List, Optional
 
 from langchain.agents import AgentExecutor, create_tool_calling_agent
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.tools import StructuredTool
 from langchain_openai import ChatOpenAI
 
 from n8n_client import N8nClient
 
 
-def _get_llm() -> ChatOpenAI:
+def _get_llm(
+    *,
+    model_override: str | None = None,
+    api_key_override: str | None = None,
+    base_url_override: str | None = None,
+) -> ChatOpenAI:
     """Configure OpenRouter-backed OpenAI-compatible chat model.
 
+    Supports either environment variables or explicit overrides.
+
     Env:
-      - OPENROUTER_API_KEY (required)
+      - OPENROUTER_API_KEY (preferred) or OPENAI_API_KEY
       - OPENROUTER_BASE_URL (default https://openrouter.ai/api/v1)
-      - OPENROUTER_MODEL (default openrouter/auto)
+      - OPENROUTER_MODEL (default openai/gpt-5-nano)
     """
-    api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
-    base_url = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").strip()
-    # Enable built-in web search by default using :online suffix per OpenRouter docs
-    model_default = "openrouter/auto:online"
-    model = os.environ.get("OPENROUTER_MODEL", model_default).strip()
-    # temperature kept low for tool-use reliability
+    api_key = (api_key_override or os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENAI_API_KEY") or "").strip()
+    if not api_key:
+        raise ValueError("Missing OpenRouter API key. Set OPENROUTER_API_KEY (preferred) or OPENAI_API_KEY.")
+
+    base_url = (base_url_override or os.environ.get("OPENROUTER_BASE_URL") or "https://openrouter.ai/api/v1").strip()
+    # Default to OpenRouter’s OpenAI model namespace
+    model_default = "openai/gpt-5-nano"
+    model = (model_override or os.environ.get("OPENROUTER_MODEL") or model_default).strip()
+
+    # Also set env vars for the OpenAI SDK, which langchain-openai uses under the hood
+    os.environ["OPENAI_API_KEY"] = api_key
+    os.environ["OPENAI_BASE_URL"] = base_url
+
+    # langchain_openai expects `api_key`, not `openai_api_key` (and honors OPENAI_API_KEY)
     return ChatOpenAI(
         model=model,
         temperature=0.2,
-        openai_api_key=api_key,
+        api_key=api_key,
         base_url=base_url,
+        default_headers={
+            # Recommended by OpenRouter (helps with rate limits/attribution). Optional for auth.
+            "HTTP-Referer": "http://localhost",
+            "X-Title": "n8n Copilot MVP",
+        },
     )
 
 
@@ -73,7 +93,13 @@ def _make_n8n_tools(client: N8nClient) -> List[StructuredTool]:
 # Web search is handled natively by OpenRouter using the :online model suffix; no extra tool needed
 
 
-def build_agent(n8n_client: N8nClient) -> AgentExecutor:
+def build_agent(
+    n8n_client: N8nClient,
+    *,
+    model: str | None = None,
+    openrouter_api_key: str | None = None,
+    openrouter_base_url: str | None = None,
+) -> AgentExecutor:
     tools = _make_n8n_tools(n8n_client)
 
     system = (
@@ -84,10 +110,10 @@ def build_agent(n8n_client: N8nClient) -> AgentExecutor:
     prompt = ChatPromptTemplate.from_messages([
         ("system", system),
         ("human", "{input}"),
-        ("placeholder", "agent_scratchpad"),
+        MessagesPlaceholder(variable_name="agent_scratchpad"),
     ])
 
-    llm = _get_llm()
+    llm = _get_llm(model_override=model, api_key_override=openrouter_api_key, base_url_override=openrouter_base_url)
     agent = create_tool_calling_agent(llm, tools, prompt)
     return AgentExecutor(agent=agent, tools=tools, verbose=False)
 

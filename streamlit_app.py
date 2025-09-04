@@ -4,6 +4,7 @@ import json
 import logging
 
 import streamlit as st
+import requests
 
 from n8n_client import N8nClient
 from agent import build_agent
@@ -31,12 +32,19 @@ def init_session_state() -> None:
         st.session_state["n8n_client"] = None
     if "selected_workflow_id" not in st.session_state:
         st.session_state["selected_workflow_id"] = None
+    if "openrouter_api_key" not in st.session_state:
+        st.session_state["openrouter_api_key"] = os.environ.get("OPENROUTER_API_KEY", "")
+    if "openrouter_model" not in st.session_state:
+        st.session_state["openrouter_model"] = os.environ.get("OPENROUTER_MODEL", "openai/gpt-5-nano")
+    if "openrouter_base_url" not in st.session_state:
+        st.session_state["openrouter_base_url"] = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 
 
 def sidebar_config() -> None:
     with st.sidebar:
         st.header("Configuration")
         st.caption("Your keys are not persisted beyond the session.")
+        st.subheader("n8n Instance")
 
         st.session_state["n8n_base_url"] = st.text_input(
             "n8n Base URL",
@@ -50,7 +58,58 @@ def sidebar_config() -> None:
             placeholder="Paste X-N8N-API-KEY",
         )
 
-        if st.button("Validate & Connect", use_container_width=True):
+        st.divider()
+        st.subheader("LLM (OpenRouter)")
+        st.session_state["openrouter_api_key"] = st.text_input(
+            "OpenRouter API Key",
+            value=st.session_state.get("openrouter_api_key", ""),
+            type="password",
+            placeholder="sk-or-v1-...",
+        )
+        st.session_state["openrouter_model"] = st.text_input(
+            "Model",
+            value=st.session_state.get("openrouter_model", "openai/gpt-5-nano"),
+            placeholder="openai/gpt-5-nano",
+        )
+        st.session_state["openrouter_base_url"] = st.text_input(
+            "OpenRouter Base URL",
+            value=st.session_state.get("openrouter_base_url", "https://openrouter.ai/api/v1"),
+        )
+
+        def _validate_openrouter(base_url: str, api_key: str, model: str) -> None:
+            url = (base_url or "https://openrouter.ai/api/v1").rstrip("/") + "/models"
+            try:
+                r = requests.get(
+                    url,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "HTTP-Referer": "http://localhost",
+                        "X-Title": "n8n Copilot MVP",
+                    },
+                    timeout=15,
+                )
+                if r.status_code == 401:
+                    st.error("OpenRouter: 401 Unauthorized. Check API key.")
+                    return
+                r.raise_for_status()
+                data = r.json() or {}
+                ids = []
+                if isinstance(data, dict) and isinstance(data.get("data"), list):
+                    ids = [x.get("id") for x in data["data"] if isinstance(x, dict)]
+                if model and ids and model not in ids:
+                    st.warning("Connected to OpenRouter, but model not found. Check model id.")
+                st.success("OpenRouter connection OK")
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"OpenRouter validation failed: {exc}")
+
+        if st.button("Validate OpenRouter", use_container_width=True):
+            _validate_openrouter(
+                st.session_state.get("openrouter_base_url", ""),
+                st.session_state.get("openrouter_api_key", ""),
+                st.session_state.get("openrouter_model", ""),
+            )
+
+        if st.button("Validate n8n", use_container_width=True):
             try:
                 client = N8nClient(
                     base_url=st.session_state["n8n_base_url"].strip(),
@@ -58,10 +117,25 @@ def sidebar_config() -> None:
                 )
                 client.test_connection()
                 st.session_state["n8n_client"] = client
-                st.success("Connected to n8n instance ✔")
+                st.success("n8n connection OK")
             except Exception as exc:  # noqa: BLE001
                 st.session_state["n8n_client"] = None
-                st.error(f"Connection failed: {exc}")
+                # Provide friendlier guidance for common auth/config issues
+                if isinstance(exc, requests.HTTPError) and getattr(exc, "response", None) is not None:
+                    status = exc.response.status_code
+                    if status == 401:
+                        st.error(
+                            "Connection failed: 401 Unauthorized.\n\n"
+                            "Tips:\n"
+                            "- Create or verify an API Key under n8n Settings → API (Public API).\n"
+                            "- Use header 'X-N8N-API-KEY' (the app sets this automatically).\n"
+                            "- Use your instance root as Base URL (no /rest or /api/v1).\n"
+                            "- Ensure Public API is enabled; the app auto-detects /api/v1 vs /rest."
+                        )
+                    else:
+                        st.error(f"Connection failed: HTTP {status}")
+                else:
+                    st.error(f"Connection failed: {exc}")
 
 
 def render_workflows_panel() -> None:
@@ -139,9 +213,19 @@ def render_chat() -> None:
                     st.warning("Connect to n8n first in the sidebar.")
                     reply = "Please connect to your n8n instance first."
                 else:
-                    agent = build_agent(client)
-                    result = agent.invoke({"input": prompt})
-                    reply = result.get("output", "(No response)")
+                    or_api_key = (st.session_state.get("openrouter_api_key") or "").strip()
+                    if not or_api_key:
+                        st.warning("Add your OpenRouter API Key in the sidebar and validate it.")
+                        reply = "Please provide your OpenRouter API Key in the sidebar."
+                    else:
+                        agent = build_agent(
+                        client,
+                        model=st.session_state.get("openrouter_model"),
+                        openrouter_api_key=st.session_state.get("openrouter_api_key"),
+                        openrouter_base_url=st.session_state.get("openrouter_base_url"),
+                        )
+                        result = agent.invoke({"input": prompt})
+                        reply = result.get("output", "(No response)")
                 st.markdown(reply)
                 st.session_state["messages"].append({"role": "assistant", "content": reply})
             except Exception as exc:  # noqa: BLE001
