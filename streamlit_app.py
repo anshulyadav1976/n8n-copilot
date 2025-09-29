@@ -456,7 +456,13 @@ def _render_chat_sidebar() -> None:
     ids = [c["id"] for c in chats]
     if ids:
         current_id = st.session_state.get("active_chat_id", ids[0])
-        sel = st.radio("", options=ids, format_func=lambda cid: labels[ids.index(cid)], index=ids.index(current_id))
+        sel = st.radio(
+            "Chats",
+            options=ids,
+            format_func=lambda cid: labels[ids.index(cid)],
+            index=ids.index(current_id),
+            label_visibility="collapsed",
+        )
         if sel and sel != current_id:
             st.session_state["active_chat_id"] = sel
 

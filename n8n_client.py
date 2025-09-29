@@ -149,7 +149,9 @@ class N8nClient:
             params["status"] = status
         if limit is not None:
             params["limit"] = limit
-        if offset is not None:
+        # Public API ("/api/v1") uses cursor-based pagination (no numeric offset)
+        # Legacy REST ("/rest") supports offset. Avoid sending offset to Public API to prevent 400s.
+        if offset is not None and self._api_prefix == "/rest":
             params["offset"] = offset
 
         response = self._get_with_retry(url, params=params)
